@@ -90,6 +90,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
@@ -167,6 +168,21 @@ ipcMain.handle('tools:checkFfmpeg', () => new Promise((resolve) => {
 ipcMain.handle('tools:checkYtdlp', () => new Promise((resolve) => {
   findWorkingBinary(ytdlpBinaryCandidates(), (bin) => resolve(!!bin));
 }));
+
+// Only accept youtube.com / youtu.be links. Not a hard security boundary
+// (spawn/execFile are called with an args array, never a shell, so command
+// injection isn't possible regardless) — this is about failing fast with a
+// clear Arabic message instead of silently spawning yt-dlp on garbage input.
+function isValidYoutubeUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    const u = new URL(url.trim());
+    const host = u.hostname.replace(/^www\./, '');
+    return ['youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'].includes(host);
+  } catch {
+    return false;
+  }
+}
 
 function sanitizeFolderName(name) {
   if (!name) return null;
@@ -264,6 +280,7 @@ function formatViewCount(n) {
 
 // ── Video metadata (rich — powers the Hero Preview) ─────────────────
 ipcMain.handle('ytdlp:getInfo', (_e, url) => new Promise((resolve) => {
+  if (!isValidYoutubeUrl(url)) return resolve({ error: 'الرابط لازم يكون رابط يوتيوب صحيح' });
   findWorkingBinary(ytdlpBinaryCandidates(), (bin) => {
     if (!bin) return resolve({ error: 'yt-dlp غير موجود' });
     execFile(bin, ['--dump-single-json', '--no-warnings', '--skip-download', '--no-playlist', url],
@@ -317,6 +334,7 @@ ipcMain.handle('ytdlp:getInfo', (_e, url) => new Promise((resolve) => {
 
 // ── Playlist metadata (powers the Playlist Manager dialog) ──────────
 ipcMain.handle('ytdlp:getPlaylistInfo', (_e, url) => new Promise((resolve) => {
+  if (!isValidYoutubeUrl(url)) return resolve({ error: 'الرابط لازم يكون رابط يوتيوب صحيح' });
   findWorkingBinary(ytdlpBinaryCandidates(), (bin) => {
     if (!bin) return resolve({ error: 'yt-dlp غير موجود' });
     execFile(bin, ['--flat-playlist', '--dump-single-json', '--no-warnings', '--ignore-errors', url],
@@ -371,7 +389,53 @@ ipcMain.handle('ytdlp:getPlaylistInfo', (_e, url) => new Promise((resolve) => {
   });
 }));
 
+// Attaches stdout/stderr/close handlers to a running yt-dlp process for a
+// given jobId. Used by download:start, download:resume, and
+// download:resumeAll so all three paths behave identically — in particular,
+// this ensures the stderr "ERROR:" capture (used for meaningful error
+// messages) is never accidentally skipped on resume.
+function attachProcessHandlers(proc, jobId) {
+  proc.stdout.on('data', (chunk) => {
+    const lines = chunk.toString().split('\n');
+    for (const line of lines) {
+      const progress = parseProgressLine(line);
+      if (progress) {
+        mainWindow.webContents.send('download:progress', { id: jobId, ...progress });
+      }
+      if (line.includes('has already been downloaded')) {
+        mainWindow.webContents.send('download:progress', { id: jobId, percent: 100 });
+      }
+    }
+  });
+  proc.stderr.on('data', (chunk) => {
+    const text = chunk.toString();
+    const jobState = activeJobs.get(jobId);
+    if (jobState) {
+      const errorLine = text.split('\n').find((l) => l.trim().startsWith('ERROR:'));
+      if (errorLine) jobState.lastError = errorLine.replace(/^ERROR:\s*/, '').trim();
+    }
+    mainWindow.webContents.send('download:log', { id: jobId, message: text });
+  });
+  proc.on('close', (code) => {
+    const state = activeJobs.get(jobId);
+    if (state && state.paused) return; // Ignore close if it's just paused
+    activeJobs.delete(jobId);
+    if (state && state.cancelled) {
+      mainWindow.webContents.send('download:cancelled', { id: jobId });
+    } else if (code === 0) {
+      mainWindow.webContents.send('download:done', { id: jobId });
+    } else {
+      const reason = (state && state.lastError) || `yt-dlp exited with code ${code}`;
+      mainWindow.webContents.send('download:error', { id: jobId, message: reason });
+    }
+  });
+}
+
 ipcMain.handle('download:start', async (event, job) => {
+  if (!isValidYoutubeUrl(job.url)) {
+    mainWindow.webContents.send('download:error', { id: job.id, message: 'الرابط لازم يكون رابط يوتيوب صحيح' });
+    return { started: false };
+  }
   const settings = loadJSON(SETTINGS_PATH, DEFAULT_SETTINGS);
   ensureAppDataDir();
   if (!fs.existsSync(settings.downloadFolder)) fs.mkdirSync(settings.downloadFolder, { recursive: true });
@@ -385,41 +449,7 @@ ipcMain.handle('download:start', async (event, job) => {
     const args = await buildArgs(job, settings);
     const proc = spawn(bin, args, { windowsHide: true });
     activeJobs.set(job.id, { proc, paused: false, cancelled: false, bin, args, job, settings, lastError: null });
-
-    proc.stdout.on('data', (chunk) => {
-      const lines = chunk.toString().split('\n');
-      for (const line of lines) {
-        const progress = parseProgressLine(line);
-        if (progress) {
-          mainWindow.webContents.send('download:progress', { id: job.id, ...progress });
-        }
-        if (line.includes('has already been downloaded')) {
-          mainWindow.webContents.send('download:progress', { id: job.id, percent: 100 });
-        }
-      }
-    });
-    proc.stderr.on('data', (chunk) => {
-      const text = chunk.toString();
-      const jobState = activeJobs.get(job.id);
-      if (jobState) {
-        const errorLine = text.split('\n').find((l) => l.trim().startsWith('ERROR:'));
-        if (errorLine) jobState.lastError = errorLine.replace(/^ERROR:\s*/, '').trim();
-      }
-      mainWindow.webContents.send('download:log', { id: job.id, message: text });
-    });
-    proc.on('close', (code) => {
-      const state = activeJobs.get(job.id);
-      if (state && state.paused) return; // Ignore close if it's just paused
-      activeJobs.delete(job.id);
-      if (state && state.cancelled) {
-        mainWindow.webContents.send('download:cancelled', { id: job.id });
-      } else if (code === 0) {
-        mainWindow.webContents.send('download:done', { id: job.id });
-      } else {
-        const reason = (state && state.lastError) || `yt-dlp exited with code ${code}`;
-        mainWindow.webContents.send('download:error', { id: job.id, message: reason });
-      }
-    });
+    attachProcessHandlers(proc, job.id);
   });
   return { started: true };
 });
@@ -439,30 +469,10 @@ ipcMain.handle('download:resume', (_e, jobId) => {
   const state = activeJobs.get(jobId);
   if (state && state.paused) {
     state.paused = false;
+    state.lastError = null;
     const newProc = spawn(state.bin, state.args, { windowsHide: true });
     state.proc = newProc;
-    
-    newProc.stdout.on('data', (chunk) => {
-      const lines = chunk.toString().split('\n');
-      for (const line of lines) {
-        const progress = parseProgressLine(line);
-        if (progress) {
-          mainWindow.webContents.send('download:progress', { id: jobId, ...progress });
-        }
-      }
-    });
-    newProc.on('close', (code) => {
-      const currentState = activeJobs.get(jobId);
-      if (currentState && currentState.paused) return;
-      activeJobs.delete(jobId);
-      if (currentState && currentState.cancelled) {
-        mainWindow.webContents.send('download:cancelled', { id: jobId });
-      } else if (code === 0) {
-        mainWindow.webContents.send('download:done', { id: jobId });
-      } else {
-        mainWindow.webContents.send('download:error', { id: jobId, message: `yt-dlp exited with code ${code}` });
-      }
-    });
+    attachProcessHandlers(newProc, jobId);
     return true;
   }
   return false;
@@ -496,31 +506,10 @@ ipcMain.handle('download:resumeAll', () => {
   for (const [id, state] of activeJobs.entries()) {
     if (state.paused && !state.cancelled) {
       state.paused = false;
+      state.lastError = null;
       const newProc = spawn(state.bin, state.args, { windowsHide: true });
       state.proc = newProc;
-      
-      newProc.stdout.on('data', (chunk) => {
-        const lines = chunk.toString().split('\n');
-        for (const line of lines) {
-          const progress = parseProgressLine(line);
-          if (progress) {
-            mainWindow.webContents.send('download:progress', { id, ...progress });
-          }
-        }
-      });
-      
-      newProc.on('close', (code) => {
-        const currentState = activeJobs.get(id);
-        if (currentState && currentState.paused) return;
-        activeJobs.delete(id);
-        if (currentState && currentState.cancelled) {
-          mainWindow.webContents.send('download:cancelled', { id });
-        } else if (code === 0) {
-          mainWindow.webContents.send('download:done', { id });
-        } else {
-          mainWindow.webContents.send('download:error', { id, message: `yt-dlp exited with code ${code}` });
-        }
-      });
+      attachProcessHandlers(newProc, id);
       count++;
     }
   }
