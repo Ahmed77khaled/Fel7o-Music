@@ -1110,7 +1110,6 @@ function renderPlaylistError(message) {
   el('playlistContent').hidden = true;
   el('playlistFooter').hidden = true;
   el('playlistErrorText').textContent = message;
-  el('playlistRetryBtn').addEventListener('click', () => fetchPlaylistInfo(state.playlist.url));
 }
 
 function renderPlaylistContent() {
@@ -1130,36 +1129,6 @@ function renderPlaylistContent() {
 
   const totalBytes = data.videos.reduce((sum, v) => sum + estimateVideoBytes(v.durationSecs), 0);
   el('playlistStatSize').textContent = formatApproxSize(totalBytes) || '—';
-
-  el('playlistSelectAllBtn').addEventListener('click', () => {
-    state.playlist.selected = new Set(data.videos.map((v) => v.id));
-    renderPlaylistContent();
-  });
-  el('playlistDeselectAllBtn').addEventListener('click', () => {
-    state.playlist.selected = new Set();
-    renderPlaylistContent();
-  });
-  el('playlistInvertBtn').addEventListener('click', () => {
-    const newSelected = new Set();
-    data.videos.forEach((v) => {
-      if (!state.playlist.selected.has(v.id)) newSelected.add(v.id);
-    });
-    state.playlist.selected = newSelected;
-    renderPlaylistContent();
-  });
-
-  el('playlistSearch').addEventListener('input', renderPlaylistContent);
-  el('playlistApplyRangeBtn').addEventListener('click', () => {
-    const from = parseInt(el('playlistRangeFrom').value, 10);
-    const to = parseInt(el('playlistRangeTo').value, 10);
-    if (from && to && from <= to) {
-      state.playlist.selected = new Set();
-      data.videos.forEach((v, i) => {
-        if (i + 1 >= from && i + 1 <= to) state.playlist.selected.add(v.id);
-      });
-      renderPlaylistContent();
-    }
-  });
 
   const q = (el('playlistSearch').value || '').toLowerCase();
   const filtered = data.videos.filter((v) => !q || (v.title || '').toLowerCase().includes(q));
@@ -1195,7 +1164,51 @@ function renderPlaylistContent() {
 
   el('playlistFooterInfo').textContent = `${state.playlist.selected.size} فيديو مختار`;
   el('playlistConfirmBtn').disabled = state.playlist.selected.size === 0;
-  el('playlistConfirmBtn').addEventListener('click', async () => {
+}
+
+// Static playlist-manager controls: bound ONCE at startup instead of inside
+// renderPlaylistContent(). Binding them on every render (previous behavior)
+// stacked duplicate listeners each time a checkbox/select-all/etc. was
+// clicked, which made "invert selection" flip back and forth unpredictably
+// and made "Add to download queue" enqueue the same videos multiple times.
+function bindPlaylistEvents() {
+  el('playlistSelectAllBtn').addEventListener('click', () => {
+    const data = state.playlist.data;
+    if (!data) return;
+    state.playlist.selected = new Set(data.videos.map((v) => v.id));
+    renderPlaylistContent();
+  });
+  el('playlistDeselectAllBtn').addEventListener('click', () => {
+    state.playlist.selected = new Set();
+    renderPlaylistContent();
+  });
+  el('playlistInvertBtn').addEventListener('click', () => {
+    const data = state.playlist.data;
+    if (!data) return;
+    const newSelected = new Set();
+    data.videos.forEach((v) => {
+      if (!state.playlist.selected.has(v.id)) newSelected.add(v.id);
+    });
+    state.playlist.selected = newSelected;
+    renderPlaylistContent();
+  });
+  el('playlistSearch').addEventListener('input', renderPlaylistContent);
+  el('playlistApplyRangeBtn').addEventListener('click', () => {
+    const data = state.playlist.data;
+    if (!data) return;
+    const from = parseInt(el('playlistRangeFrom').value, 10);
+    const to = parseInt(el('playlistRangeTo').value, 10);
+    if (from && to && from <= to) {
+      state.playlist.selected = new Set();
+      data.videos.forEach((v, i) => {
+        if (i + 1 >= from && i + 1 <= to) state.playlist.selected.add(v.id);
+      });
+      renderPlaylistContent();
+    }
+  });
+  el('playlistConfirmBtn').addEventListener('click', () => {
+    const data = state.playlist.data;
+    if (!data) return;
     const selected = data.videos.filter((v) => state.playlist.selected.has(v.id));
     for (const video of selected) {
       const job = {
@@ -1224,10 +1237,7 @@ function renderPlaylistContent() {
     closePlaylistManager();
   });
   el('playlistCancelBtn').addEventListener('click', closePlaylistManager);
-}
-
-function bindPlaylistEvents() {
-  // Handled in renderPlaylistContent
+  el('playlistRetryBtn').addEventListener('click', () => fetchPlaylistInfo(state.playlist.url));
 }
 
 // ── Init on page load ────────────────────────────────────────────────
