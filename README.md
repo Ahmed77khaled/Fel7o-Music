@@ -3,8 +3,8 @@
 ## تشغيل المشروع أول مرة (على جهازك، ويندوز)
 
 ```
-git clone https://github.com/Ahmed77khaled/Fel7o-Music-.git
-cd Fel7o-Music-
+git clone https://github.com/Ahmed77khaled/Fel7o-Music.git
+cd Fel7o-Music
 npm install
 npm start
 ```
