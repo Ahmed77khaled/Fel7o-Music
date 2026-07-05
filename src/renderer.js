@@ -689,7 +689,7 @@ function wireIpc() {
 
     window.fel7o.notify({
       title: 'فشل التحميل ⚠️',
-      body: `حدث خطأ أثناء تحميل "${job.title}".`
+      body: `"${job.title}": ${data.message || 'خطأ غير معروف'}`
     });
 
     showToast(`فشل التحميل: ${data.message || 'خطأ غير معروف'}`);
@@ -848,6 +848,12 @@ function renderQueue() {
             <div class="queue-title">${escapeHtml(job.title)}</div>
             <div class="queue-channel">${escapeHtml(job.channel)}</div>
           </div>
+
+          ${job.status === 'error' && job.errorMessage ? `
+          <div class="queue-error-reason" style="color:#ff6b6b;font-size:12px;margin-top:4px;">
+            ${escapeHtml(job.errorMessage)}
+          </div>
+          ` : ''}
 
           <!-- Progress Bar (only for downloading) -->
           ${job.status === 'downloading' ? `
