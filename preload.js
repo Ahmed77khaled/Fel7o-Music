@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('fel7o', {
   // fs / shell
   chooseFolder: () => ipcRenderer.invoke('dialog:chooseFolder'),
   openFolder: (p) => ipcRenderer.invoke('shell:openFolder', p),
+  openJobFolder: (payload) => ipcRenderer.invoke('shell:openJobFolder', payload),
   readClipboard: () => ipcRenderer.invoke('clipboard:read'),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 
