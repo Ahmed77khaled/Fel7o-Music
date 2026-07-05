@@ -371,6 +371,60 @@ ipcMain.handle('ytdlp:getPlaylistInfo', (_e, url) => new Promise((resolve) => {
   });
 }));
 
+// ── Real file sizes for playlist videos (used to replace the rough bitrate
+//    estimate once a size is known). Capped and concurrency-limited so
+//    selecting a big playlist can't spawn 100+ yt-dlp processes at once. ──
+ipcMain.handle('ytdlp:getVideoSizes', (_e, urls) => new Promise((resolve) => {
+  const list = Array.isArray(urls) ? urls.slice(0, 30) : []; // hard cap per call
+  if (!list.length) return resolve({});
+  findWorkingBinary(ytdlpBinaryCandidates(), (bin) => {
+    if (!bin) return resolve({});
+    const results = {};
+    const CONCURRENCY = 3;
+    let idx = 0;
+    let running = 0;
+    let done = 0;
+
+    function finishOne() {
+      done++;
+      running--;
+      if (done >= list.length) return resolve(results);
+      launchNext();
+    }
+
+    function launchNext() {
+      while (running < CONCURRENCY && idx < list.length) {
+        const url = list[idx++];
+        running++;
+        execFile(bin, ['--dump-single-json', '--no-warnings', '--skip-download', '--no-playlist', url],
+          { maxBuffer: 1024 * 1024 * 10, timeout: 20000 },
+          (err, stdout) => {
+            if (stdout) {
+              try {
+                const data = JSON.parse(stdout);
+                let bytes = data.filesize || data.filesize_approx || null;
+                if (!bytes && Array.isArray(data.formats)) {
+                  const withSize = data.formats.filter((f) => f.filesize || f.filesize_approx);
+                  if (withSize.length) {
+                    const best = withSize[withSize.length - 1];
+                    bytes = best.filesize || best.filesize_approx;
+                  }
+                }
+                results[url] = bytes || null;
+              } catch (e) {
+                results[url] = null;
+              }
+            } else {
+              results[url] = null;
+            }
+            finishOne();
+          });
+      }
+    }
+    launchNext();
+  });
+}));
+
 ipcMain.handle('download:start', async (event, job) => {
   const settings = loadJSON(SETTINGS_PATH, DEFAULT_SETTINGS);
   ensureAppDataDir();
