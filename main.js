@@ -25,7 +25,8 @@ const DEFAULT_SETTINGS = {
   autoPasteClipboard: true,
   windowWidth: 1180,
   windowHeight: 780,
-  hasSeenWelcome: false,
+  welcomeShown: false,
+  userName: '',
 };
 
 function loadJSON(filePath, fallback) {
