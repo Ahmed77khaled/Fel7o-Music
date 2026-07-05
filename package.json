@@ -4,6 +4,7 @@
   "description": "Fel7o Downloader — premium YouTube audio/video downloader",
   "main": "main.js",
   "scripts": {
+    "postinstall": "node scripts/extract-ffmpeg.js",
     "start": "electron .",
     "dist": "electron-builder"
   },
@@ -11,7 +12,8 @@
   "license": "UNLICENSED",
   "devDependencies": {
     "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "extract-zip": "^2.0.1"
   },
   "build": {
     "appId": "com.fel7o.downloader",
