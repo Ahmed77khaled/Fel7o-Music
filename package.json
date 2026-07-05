@@ -1,11 +1,11 @@
 {
   "name": "fel7o-downloader",
-  "version": "1.0.0",
+  "version": "5.0.1",
   "description": "Fel7o Downloader — premium YouTube audio/video downloader",
   "main": "main.js",
   "scripts": {
     "postinstall": "node scripts/extract-ffmpeg.js",
-    "start": "electron .",
+    "start": "node Fel7o.js",
     "dist": "electron-builder"
   },
   "author": "Fel7o",
