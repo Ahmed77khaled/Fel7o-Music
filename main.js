@@ -16,15 +16,16 @@ const DEFAULT_SETTINGS = {
   theme: 'dark',
   mode: 'mp3',
   audioFormat: 'mp3',
-  audioQuality: '192',
+  audioQuality: '320',
   videoQuality: '1080',
   videoContainer: 'mp4',
-  concurrentDownloads: 2,
+  concurrentDownloads: 1,
   embedThumbnail: true,
   embedMetadata: true,
   autoPasteClipboard: true,
   windowWidth: 1180,
   windowHeight: 780,
+  windowMaximized: true,
   welcomeShown: false,
   userName: '',
 };
@@ -86,6 +87,7 @@ function createWindow() {
     backgroundColor: '#0B0F17',
     frame: true,
     autoHideMenuBar: true,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -95,10 +97,23 @@ function createWindow() {
   });
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
 
+  mainWindow.once('ready-to-show', () => {
+    if (settings.windowMaximized !== false) mainWindow.maximize();
+    mainWindow.show();
+  });
+
   mainWindow.on('close', () => {
-    const [w, h] = [mainWindow.getBounds().width, mainWindow.getBounds().height];
+    const isMaximized = mainWindow.isMaximized();
+    // getBounds() while maximized reports the full screen size, not a useful
+    // "restored" size — so only persist width/height when NOT maximized, to
+    // avoid the window silently growing every time it's reopened maximized.
+    const bounds = isMaximized ? null : mainWindow.getBounds();
     const s = loadJSON(SETTINGS_PATH, DEFAULT_SETTINGS);
-    saveJSON(SETTINGS_PATH, { ...s, windowWidth: w, windowHeight: h });
+    saveJSON(SETTINGS_PATH, {
+      ...s,
+      windowMaximized: isMaximized,
+      ...(bounds ? { windowWidth: bounds.width, windowHeight: bounds.height } : {}),
+    });
   });
 }
 
