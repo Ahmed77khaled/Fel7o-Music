@@ -28,8 +28,6 @@ const state = {
     selected: new Set(), // ids of selected videos
     searchQuery: '',
     token: 0,
-    sizeCache: new Map(), // videoUrl -> real bytes (number) or null (unknown/failed)
-    sizeFetchTimer: null,
   },
   // More Actions Menu
   openMoreMenuId: null,
@@ -1051,46 +1049,15 @@ function formatApproxSize(bytes) {
 
 function estimateVideoBytes(durationSecs) {
   if (!durationSecs) return 0;
-  // Rough heuristic matching the single-video estimate used elsewhere in the app:
-  // ~ (bitrate) * duration. Good enough for a "approximate" playlist total.
+  // Rough heuristic (bitrate x duration). This is intentionally an estimate,
+  // not a "real" fetched size: a prior version tried to fetch yt-dlp's real
+  // filesize, but that number comes from the best available *video* format,
+  // which has nothing to do with the actual MP3/output size after
+  // extraction or quality-limited re-encoding. That made the total less
+  // accurate, not more (it was overshooting actual downloaded size), so it
+  // has been removed in favor of this single, consistent estimate.
   const bitrateKbps = bitrateKbpsForQuality(state.selectedMode, el('qualitySelect').value);
   return (bitrateKbps * 1000 / 8) * durationSecs;
-}
-
-// Returns bytes for a video: real size if we already fetched it, otherwise
-// the rough bitrate-based estimate.
-function bestKnownVideoBytes(video) {
-  const cached = state.playlist.sizeCache.get(video.url);
-  if (cached) return cached;
-  return estimateVideoBytes(video.durationSecs);
-}
-
-// Kicks off (debounced) background fetching of real sizes for the currently
-// selected videos that we don't already know yet, then re-renders the stats.
-// Capped to 30 per call (matches main.js) so a huge selection doesn't spawn
-// a wall of yt-dlp processes; anything beyond that just keeps the estimate.
-function scheduleRealSizeFetch() {
-  if (state.playlist.sizeFetchTimer) clearTimeout(state.playlist.sizeFetchTimer);
-  state.playlist.sizeFetchTimer = setTimeout(async () => {
-    const data = state.playlist.data;
-    if (!data) return;
-    const requestedUrl = state.playlist.url;
-    const missing = data.videos
-      .filter((v) => state.playlist.selected.has(v.id) && !state.playlist.sizeCache.has(v.url))
-      .map((v) => v.url)
-      .slice(0, 30);
-    if (!missing.length) return;
-    try {
-      const sizes = await window.fel7o.getVideoSizes(missing);
-      if (state.playlist.url !== requestedUrl) return; // manager closed/changed while fetching
-      Object.entries(sizes || {}).forEach(([url, bytes]) => {
-        state.playlist.sizeCache.set(url, bytes || null);
-      });
-      if (!el('playlistContent').hidden) renderPlaylistContent();
-    } catch (e) {
-      // Silently keep using estimates — this is a nice-to-have, not critical.
-    }
-  }, 400);
 }
 
 function openPlaylistManager(url) {
@@ -1098,8 +1065,6 @@ function openPlaylistManager(url) {
   state.playlist.data = null;
   state.playlist.selected = new Set();
   state.playlist.searchQuery = '';
-  state.playlist.sizeCache = new Map();
-  if (state.playlist.sizeFetchTimer) clearTimeout(state.playlist.sizeFetchTimer);
   el('playlistSearch') && (el('playlistSearch').value = '');
 
   el('settingsOverlay').hidden = true;
@@ -1174,12 +1139,10 @@ function renderPlaylistContent() {
   const mins = Math.floor((totalDuration % 3600) / 60);
   el('playlistStatDuration').textContent = `${hours}س ${mins}د`;
 
-  const totalBytes = selectedVideos.reduce((sum, v) => sum + bestKnownVideoBytes(v), 0);
-  const allSizesReal = selectedVideos.length > 0 && selectedVideos.every((v) => state.playlist.sizeCache.get(v.url));
+  const totalBytes = selectedVideos.reduce((sum, v) => sum + estimateVideoBytes(v.durationSecs), 0);
   const sizeLabelEl = el('playlistStatSizeLabel');
-  if (sizeLabelEl) sizeLabelEl.textContent = allSizesReal ? 'الحجم' : 'حجم تقريبي';
+  if (sizeLabelEl) sizeLabelEl.textContent = 'حجم تقريبي';
   el('playlistStatSize').textContent = formatApproxSize(totalBytes) || '—';
-  scheduleRealSizeFetch();
 
   const q = (el('playlistSearch').value || '').toLowerCase();
   const filtered = data.videos.filter((v) => !q || (v.title || '').toLowerCase().includes(q));
@@ -1289,6 +1252,8 @@ function bindPlaylistEvents() {
   });
   el('playlistCancelBtn').addEventListener('click', closePlaylistManager);
   el('playlistRetryBtn').addEventListener('click', () => {
+    el('playlistError').hidden = true;
+    el('playlistLoading').hidden = false;
     el('playlistLoadingCount').textContent = 'بيحاول تاني…';
     fetchPlaylistInfo(state.playlist.url);
   });
