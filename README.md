@@ -3,7 +3,8 @@
 ## تشغيل المشروع أول مرة (على جهازك، ويندوز)
 
 ```
-cd fel7o-electron
+git clone https://github.com/Ahmed77khaled/Fel7o-Music-.git
+cd Fel7o-Music-
 npm install
 npm start
 ```
@@ -12,13 +13,19 @@ npm start
 
 ## محتاج قبل ما تشتغل فعليًا
 
-1. **yt-dlp.exe** — حمّله من:
-   https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
-   وحطه في مجلد جديد اسمه `bin` جوه المشروع: `fel7o-electron/bin/yt-dlp.exe`
-   (البرنامج بيدور عليه هناك، أو في الـ PATH لو مثبت عالمي)
+المشروع بيجيلك **جاهز** — كل حاجة موجودة في مجلد `bin/` أول ما تعمل `npm install`:
 
-2. **ffmpeg.exe** — اختياري بس محتاج للتحويل لصيغ صوت معينة ودمج الفيديو/الصوت.
-   حطه في نفس مجلد `bin/ffmpeg.exe`، أو ثبته عالميًا وحطه في الـ PATH.
+1. **yt-dlp.exe** — موجود بالفعل جوه `bin/yt-dlp.exe`، مفيش داعي تحمّله يدوي.
+
+2. **ffmpeg.exe** — مضغوط في `bin/ffmpeg.zip` (عشان حجم الملف كان أكبر من حد GitHub
+   لملفات الريبو العادية). أول ما تعمل `npm install`، سكريبت `postinstall`
+   (`scripts/extract-ffmpeg.js`) بيفكه تلقائيًا ويحطه `bin/ffmpeg.exe` — مفيش
+   أي خطوة يدوية مطلوبة منك.
+
+   لو لأي سبب مفكش تلقائي، تقدر تشغّله يدوي:
+   ```
+   node scripts/extract-ffmpeg.js
+   ```
 
 ## بناء نسخة exe نهائية للتوزيع
 
@@ -36,4 +43,5 @@ npm run dist
   البرومبت اللي حددته.
 - المنطق (queue, history, settings, progress parsing) شغال فعليًا مش mockup،
   بس محتاج اختبار حقيقي على جهازك مع رابط يوتيوب فعلي.
-- لو yt-dlp مش موجود، الواجهة هتبين "yt-dlp غير موجود" في شريط الحالة تحت.
+- لو yt-dlp أو ffmpeg مش موجودين لأي سبب، الواجهة هتبين رسالة خطأ واضحة في
+  شريط الحالة تحت.
