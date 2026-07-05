@@ -326,15 +326,31 @@
   <div class="modal-overlay" id="welcomeOverlay" hidden>
     <div class="modal welcome-modal">
       <div class="welcome-logo">F</div>
-      <div class="welcome-title">أهلاً، <span class="w-accent" id="welcomeName">فلوحو</span> 👋</div>
-      <div class="welcome-message" id="welcomeMessage">
-        مبسوطين إنك بتستخدم Fel7o Downloader — حمّل فيديوهات وأغاني يوتيوب بسهولة وبجودة عالية.
+
+      <!-- Step 1: ask for the user's name -->
+      <div id="welcomeNameStep">
+        <div class="welcome-title">أهلاً بيك 👋</div>
+        <div class="welcome-message">قبل ما نبدأ، تحب نناديك إيه؟</div>
+        <input type="text" id="welcomeNameInput" class="welcome-name-input" placeholder="اكتب اسمك هنا" maxlength="30" />
+        <div class="welcome-actions">
+          <button class="primary-btn" id="welcomeNameNextBtn">
+            <span>متابعة</span>
+          </button>
+        </div>
       </div>
-      <div class="welcome-links" id="welcomeLinks"></div>
-      <div class="welcome-actions">
-        <button class="primary-btn" id="welcomeOkBtn">
-          <span>تمام</span>
-        </button>
+
+      <!-- Step 2: personalized welcome message -->
+      <div id="welcomeMessageStep" hidden>
+        <div class="welcome-title">أهلاً، <span class="w-accent" id="welcomeName">صديقنا</span> 👋</div>
+        <div class="welcome-message" id="welcomeMessage">
+          مبسوطين إنك بتستخدم Fel7o Downloader — حمّل فيديوهات وأغاني يوتيوب بسهولة وبجودة عالية.
+        </div>
+        <div class="welcome-links" id="welcomeLinks"></div>
+        <div class="welcome-actions">
+          <button class="primary-btn" id="welcomeOkBtn">
+            <span>تمام</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
