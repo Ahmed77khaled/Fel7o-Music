@@ -1,10 +1,10 @@
 // ── Welcome popup config ──────────────────────────────────────────
 // Edit these values to customize the one-time welcome popup.
 const WELCOME_CONFIG = {
-  name: 'Fel7o',                                   // shown as "أهلاً، <name>"
+  fallbackName: 'صديقنا',                          // used if the user leaves the name field empty
   message: 'مبسوطين إنك بتستخدم Fel7o Downloader — حمّل فيديوهات وأغاني يوتيوب بسهولة وبجودة عالية.',
   links: [
-    { text: 'فيسبوك', url: 'https://web.facebook.com/ahmed.elfalah.754' },
+    { text: 'فيسبوك', url: 'https://www.facebook.com/share/1GJ7rWrm1V/' },
     { text: 'لينكدإن', url: 'https://www.linkedin.com/in/ahmed-el-falah-b771bb345?utm_source=share_via&utm_content=profile&utm_medium=member_android' },
   ],
 };
@@ -148,8 +148,6 @@ function refreshPreviewBadgesIfShown() {
 
 // ── Welcome popup (shown once per install) ─────────────────────────
 function initWelcomePopup() {
-  el('welcomeName').textContent = WELCOME_CONFIG.name;
-  el('welcomeMessage').textContent = WELCOME_CONFIG.message;
   const linksHtml = WELCOME_CONFIG.links.map((link) => `
     <a class="welcome-link" href="${link.url}" target="_blank" rel="noopener noreferrer">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3zM5 5h6v2H5v12h12v-6h2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
@@ -159,13 +157,39 @@ function initWelcomePopup() {
   el('welcomeLinks').innerHTML = linksHtml;
   el('aboutLinks').innerHTML = linksHtml;
 
-  if (!state.settings.hasSeenWelcome) {
+  const nameStep = el('welcomeNameStep');
+  const messageStep = el('welcomeMessageStep');
+  el('welcomeMessage').textContent = WELCOME_CONFIG.message;
+
+  if (!state.settings.welcomeShown) {
     el('welcomeOverlay').hidden = false;
+    if (state.settings.userName) {
+      // Name already known from a previous run — skip straight to the message.
+      nameStep.hidden = true;
+      messageStep.hidden = false;
+      el('welcomeName').textContent = state.settings.userName;
+    } else {
+      nameStep.hidden = false;
+      messageStep.hidden = true;
+    }
   }
+
+  el('welcomeNameNextBtn').addEventListener('click', async () => {
+    const typedName = el('welcomeNameInput').value.trim();
+    const finalName = typedName || WELCOME_CONFIG.fallbackName;
+    state.settings = await window.fel7o.saveSettings({ userName: finalName });
+    el('welcomeName').textContent = finalName;
+    nameStep.hidden = true;
+    messageStep.hidden = false;
+  });
+
+  el('welcomeNameInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') el('welcomeNameNextBtn').click();
+  });
 
   el('welcomeOkBtn').addEventListener('click', async () => {
     el('welcomeOverlay').hidden = true;
-    state.settings = await window.fel7o.saveSettings({ hasSeenWelcome: true });
+    state.settings = await window.fel7o.saveSettings({ welcomeShown: true });
   });
 }
 
@@ -366,6 +390,20 @@ function fetchUrlPreview(url) {
   });
 }
 
+function bitrateKbpsForQuality(mode, qualityValue) {
+  if (mode === 'mp3') return parseInt(qualityValue, 10) || 192;
+  return { '2160': 40000, '1440': 16000, '1080': 8000, '720': 5000, '480': 2500, best: 8000 }[qualityValue] || 8000;
+}
+
+function estimateSizeForSelectedQuality(info) {
+  const durationSecs = info && info.durationSecs;
+  if (!durationSecs) return null;
+  const qualityValue = el('qualitySelect').value;
+  const bitrateKbps = bitrateKbpsForQuality(state.selectedMode, qualityValue);
+  const bytes = (bitrateKbps * 1000 / 8) * durationSecs;
+  return formatApproxSize(bytes);
+}
+
 function renderPreviewCard(url, info) {
   const section = el('urlPreviewSection');
   section.hidden = false;
@@ -382,8 +420,10 @@ function renderPreviewCard(url, info) {
   if (info.viewCount) metaItems.push(`<span class="preview-meta-item">${META_ICONS.eye}${escapeHtml(info.viewCount)} مشاهدة</span>`);
   if (info.uploadDate) metaItems.push(`<span class="preview-meta-item">${META_ICONS.calendar}${escapeHtml(info.uploadDate)}</span>`);
   if (info.resolution) metaItems.push(`<span class="preview-meta-item">${META_ICONS.resolution}${escapeHtml(info.resolution)}</span>`);
-  if (info.estimatedSize) {
-    metaItems.push(`<span class="preview-meta-item">${META_ICONS.size}${escapeHtml(info.estimatedSize)}~</span>`);
+  const dynamicSize = estimateSizeForSelectedQuality(info);
+  const displaySize = dynamicSize || info.estimatedSize;
+  if (displaySize) {
+    metaItems.push(`<span class="preview-meta-item">${META_ICONS.size}${escapeHtml(displaySize)}~</span>`);
   } else {
     metaItems.push(`<span class="preview-meta-item is-placeholder">${META_ICONS.size}الحجم غير معروف</span>`);
   }
@@ -966,8 +1006,7 @@ function estimateVideoBytes(durationSecs) {
   if (!durationSecs) return 0;
   // Rough heuristic matching the single-video estimate used elsewhere in the app:
   // ~ (bitrate) * duration. Good enough for a "approximate" playlist total.
-  const bitrateKbps = state.selectedMode === 'mp3' ? parseInt(el('qualitySelect').value, 10) || 192
-    : { '2160': 40000, '1440': 16000, '1080': 8000, '720': 5000, '480': 2500, best: 8000 }[el('qualitySelect').value] || 8000;
+  const bitrateKbps = bitrateKbpsForQuality(state.selectedMode, el('qualitySelect').value);
   return (bitrateKbps * 1000 / 8) * durationSecs;
 }
 
