@@ -1040,6 +1040,15 @@ function renderHistory() {
 
 
 // ── Playlist Manager ──────────────────────────────────────────────
+function formatDurationArabic(hours, mins) {
+  if (!hours && !mins) return '—';
+  const parts = [];
+  if (hours > 0) parts.push(`${hours} ${hours === 1 ? 'ساعة' : hours === 2 ? 'ساعتين' : hours <= 10 ? 'ساعات' : 'ساعة'}`);
+  if (mins > 0) parts.push(`${mins} ${mins === 1 ? 'دقيقة' : mins === 2 ? 'دقيقتين' : mins <= 10 ? 'دقائق' : 'دقيقة'}`);
+  if (parts.length === 0) return '0 دقيقة';
+  return parts.join(' و');
+}
+
 function formatApproxSize(bytes) {
   if (!bytes || bytes <= 0) return null;
   const mb = bytes / (1024 * 1024);
@@ -1137,7 +1146,7 @@ function renderPlaylistContent() {
   selectedVideos.forEach((v) => { totalDuration += v.durationSecs || 0; });
   const hours = Math.floor(totalDuration / 3600);
   const mins = Math.floor((totalDuration % 3600) / 60);
-  el('playlistStatDuration').textContent = `${hours}س ${mins}د`;
+  el('playlistStatDuration').textContent = formatDurationArabic(hours, mins);
 
   const totalBytes = selectedVideos.reduce((sum, v) => sum + estimateVideoBytes(v.durationSecs), 0);
   const sizeLabelEl = el('playlistStatSizeLabel');
@@ -1250,6 +1259,7 @@ function bindPlaylistEvents() {
     maybeStartNext();
     closePlaylistManager();
   });
+  el('closePlaylist').addEventListener('click', closePlaylistManager);
   el('playlistCancelBtn').addEventListener('click', closePlaylistManager);
   el('playlistRetryBtn').addEventListener('click', () => {
     el('playlistError').hidden = true;
