@@ -49,8 +49,8 @@ const activeJobs = new Map();
 
 function bundledBinPath(filename) {
   // In a packaged app, extra resources live under process.resourcesPath.
-  // In dev (`npm start` / `electron .`), process.resourcesPath points inside
-  // Electron's own install dir, NOT the project folder — so we must also
+  // In dev (`npm start`), process.resourcesPath points inside the desktop
+  // runtime's own install dir, NOT the project folder — so we must also
   // check the project's own bin/ folder next to main.js.
   const candidates = [];
   if (app.isPackaged && process.resourcesPath) {
