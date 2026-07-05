@@ -102,6 +102,14 @@ function createWindow() {
   });
 }
 
+// Makes Windows show "Fel7o Downloader" as the notification sender name
+// instead of the default "electron.app.Electron" — needed for dev mode
+// (npm start); a packaged install picks this up from the installer's shortcut
+// too, but setting it here keeps both cases consistent.
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.fel7o.downloader');
+}
+
 app.whenReady().then(() => {
   ensureAppDataDir();
   createWindow();
